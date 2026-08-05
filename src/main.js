@@ -1,28 +1,15 @@
-const controlsConfig = [
-  ["initialPopulation", "初期投入ネズミ数", 8, 120, 4, 24, "実験開始時に投入する個体数です。"],
-  ["foodSupply", "餌の投入数", 20, 420, 10, 170, "多いほど出生率と生存率が上がります。"],
-  ["nestCount", "巣の数", 2, 80, 1, 20, "繁殖に使える安全な巣の数です。"],
-  ["spaceSize", "居住空間の広さ", 40, 500, 10, 220, "広いほど密度ストレスが下がります。"],
-  ["daySeconds", "1日が進む秒数", 0.25, 6, 0.25, 2, "2秒で1日が標準です。小さいほど高速です。"],
-  ["birthRate", "繁殖しやすさ", 0, 100, 1, 42, "餌と巣が足りている場合の増えやすさです。"],
-  ["stressSensitivity", "密度ストレス感度", 0, 100, 1, 48, "過密時の出生低下・死亡増加の強さです。"],
-  ["lifespan", "平均寿命（日）", 120, 1400, 20, 720, "寿命が長いほど自然減が緩やかになります。"],
-];
+import { controlsConfig, createSimulation, defaultParams, stepSimulation } from "./simulation.js";
 
-const state = {
+const uiState = {
   running: false,
-  day: 0,
-  population: 0,
-  births: 0,
-  deaths: 0,
-  params: Object.fromEntries(controlsConfig.map(([key,,,,, value]) => [key, value])),
-  history: [],
-  mice: [],
+  params: defaultParams(),
+  sim: null,
   lastTick: performance.now(),
   accumulator: 0,
 };
 
 const controls = document.querySelector("#controls");
+const debugGrid = document.querySelector("#debugGrid");
 const colonyCanvas = document.querySelector("#colonyCanvas");
 const chartCanvas = document.querySelector("#populationChart");
 const colonyCtx = colonyCanvas.getContext("2d");
@@ -40,79 +27,53 @@ function makeControls() {
     controls.appendChild(wrapper);
     const input = wrapper.querySelector("input");
     input.addEventListener("input", () => {
-      state.params[key] = Number(input.value);
+      uiState.params[key] = Number(input.value);
       document.querySelector(`#${key}Value`).textContent = input.value;
-      if (["initialPopulation", "foodSupply", "nestCount", "spaceSize"].includes(key)) resetSimulation();
+      if (["initialPopulation", "foodSupply", "nestCount", "spaceSize", "birthRate", "stressSensitivity", "lifespan", "socialFragility"].includes(key)) resetSimulation();
     });
   });
 }
 
 function resetSimulation() {
-  state.day = 0;
-  state.population = Math.round(state.params.initialPopulation);
-  state.births = 0;
-  state.deaths = 0;
-  state.history = [{ day: 0, population: state.population }];
-  state.mice = Array.from({ length: Math.min(state.population, 180) }, createMouse);
-  state.lastTick = performance.now();
-  state.accumulator = 0;
+  uiState.sim = createSimulation(uiState.params);
+  uiState.lastTick = performance.now();
+  uiState.accumulator = 0;
   updateReadouts();
   draw();
 }
 
-function createMouse() {
-  return {
-    x: Math.random() * colonyCanvas.width,
-    y: Math.random() * colonyCanvas.height,
-    vx: (Math.random() - 0.5) * 0.7,
-    vy: (Math.random() - 0.5) * 0.7,
-    size: 8 + Math.random() * 8,
-    hue: 25 + Math.random() * 24,
-    blink: Math.random() * Math.PI * 2,
-  };
-}
-
-function simulateDay() {
-  const p = state.params;
-  const foodPressure = Math.min(1.6, p.foodSupply / Math.max(1, state.population));
-  const nestPressure = Math.min(1.4, (p.nestCount * 3) / Math.max(1, state.population));
-  const density = state.population / p.spaceSize;
-  const stress = Math.max(0, density - 0.8) * (p.stressSensitivity / 100);
-  const birthChance = Math.max(0, (p.birthRate / 100) * 0.085 * foodPressure * nestPressure * (1 - stress));
-  const deathChance = Math.min(0.42, 1 / p.lifespan + Math.max(0, 1 - foodPressure) * 0.045 + stress * 0.075);
-
-  const births = poisson(state.population * birthChance);
-  const deaths = Math.min(state.population, poisson(state.population * deathChance));
-  state.population = Math.max(0, state.population + births - deaths);
-  state.births = births;
-  state.deaths = deaths;
-  state.day += 1;
-  state.history.push({ day: state.day, population: state.population });
-  if (state.history.length > 720) state.history.shift();
-  syncMice();
-  updateReadouts();
-}
-
-function poisson(lambda) {
-  if (lambda <= 0) return 0;
-  const limit = Math.exp(-lambda);
-  let k = 0;
-  let product = 1;
-  do { k += 1; product *= Math.random(); } while (product > limit && k < lambda * 5 + 25);
-  return k - 1;
-}
-
-function syncMice() {
-  const visible = Math.min(state.population, 220);
-  while (state.mice.length < visible) state.mice.push(createMouse());
-  state.mice.length = visible;
-}
-
 function updateReadouts() {
-  document.querySelector("#dayCounter").textContent = `${state.day} 日`;
-  document.querySelector("#populationNow").textContent = state.population.toLocaleString("ja-JP");
-  document.querySelector("#birthsNow").textContent = state.births.toLocaleString("ja-JP");
-  document.querySelector("#deathsNow").textContent = state.deaths.toLocaleString("ja-JP");
+  const { sim } = uiState;
+  const stats = sim.stats;
+  document.querySelector("#dayCounter").textContent = `${sim.day} 日`;
+  document.querySelector("#populationNow").textContent = stats.population.toLocaleString("ja-JP");
+  document.querySelector("#birthsNow").textContent = stats.births.toLocaleString("ja-JP");
+  document.querySelector("#deathsNow").textContent = stats.deaths.toLocaleString("ja-JP");
+  document.querySelector("#statusNow").textContent = sim.status;
+  debugGrid.innerHTML = debugRows(stats).map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`).join("");
+}
+
+function debugRows(stats) {
+  return [
+    ["現在個体数", stats.population],
+    ["成体数", stats.adults],
+    ["幼体数", stats.juveniles],
+    ["出生数", stats.births],
+    ["死亡数", stats.deaths],
+    ["繁殖成功数", stats.successfulMatings],
+    ["育児成功数", stats.successfulParenting],
+    ["育児放棄数", stats.neglectEvents],
+    ["平均社会化能力", pct(stats.averageSocialization)],
+    ["平均育児能力", pct(stats.averageParentingAbility)],
+    ["平均交尾能力", pct(stats.averageMatingAbility)],
+    ["平均トラウマ", pct(stats.averageTrauma)],
+    ["社会的離脱個体数", stats.sociallyDetachedCount],
+    ["正常繁殖可能個体数", stats.functionalBreeders],
+    ["正常育児可能個体数", stats.functionalParents],
+    ["局所過密の最大値", stats.maxLocalCrowding.toFixed(2)],
+    ["社会的健全性指数", pct(stats.socialHealthIndex)],
+    ["繁殖健全性指数", pct(stats.reproductiveHealthIndex)],
+  ];
 }
 
 function draw() {
@@ -126,97 +87,114 @@ function drawColony() {
   colonyCtx.fillStyle = "#08111f";
   colonyCtx.fillRect(0, 0, width, height);
   drawResources(width, height);
-  state.mice.forEach((mouse) => {
-    mouse.x += mouse.vx;
-    mouse.y += mouse.vy;
-    if (mouse.x < 12 || mouse.x > width - 12) mouse.vx *= -1;
-    if (mouse.y < 12 || mouse.y > height - 12) mouse.vy *= -1;
-    drawMouse(mouse);
-  });
+  const visibleAnimals = uiState.sim.animals.slice(0, 260);
+  visibleAnimals.forEach((mouse) => drawMouse(mouse, width, height));
+  if (uiState.sim.animals.length > visibleAnimals.length) {
+    colonyCtx.fillStyle = "rgba(248,250,252,0.72)";
+    colonyCtx.font = "18px sans-serif";
+    colonyCtx.fillText(`+${uiState.sim.animals.length - visibleAnimals.length} 匹`, 22, 34);
+  }
 }
 
 function drawResources(width, height) {
-  const nests = Math.min(state.params.nestCount, 36);
-  const food = Math.min(state.params.foodSupply / 12, 32);
+  const nests = Math.min(uiState.params.nestCount, 60);
+  const food = Math.min(uiState.params.foodSupply / 14, 48);
   for (let i = 0; i < nests; i += 1) {
-    const x = 58 + (i % 9) * 88;
-    const y = height - 54 - Math.floor(i / 9) * 38;
+    const x = 58 + (i % 10) * 82;
+    const y = height - 54 - Math.floor(i / 10) * 36;
     colonyCtx.fillStyle = "rgba(251, 191, 36, 0.18)";
-    polygon(x, y, 22, 6, -Math.PI / 6);
+    polygon(colonyCtx, x, y, 22, 6, -Math.PI / 6);
     colonyCtx.fill();
   }
   for (let i = 0; i < food; i += 1) {
     const x = width - 68 - (i % 8) * 34;
     const y = 54 + Math.floor(i / 8) * 34;
     colonyCtx.fillStyle = "rgba(69, 215, 182, 0.5)";
-    polygon(x, y, 8, 5, 0);
+    polygon(colonyCtx, x, y, 8, 5, 0);
     colonyCtx.fill();
   }
 }
 
-function drawMouse(mouse) {
-  const { x, y, size, hue } = mouse;
+function drawMouse(mouse, width, height) {
+  const x = mouse.x * width;
+  const y = mouse.y * height;
+  const size = mouse.stage === "juvenile" ? 7 : 12;
+  const hue = mouse.state === "sociallyDetached" ? 205 : 24 + mouse.socialization * 40;
   colonyCtx.save();
   colonyCtx.translate(x, y);
-  colonyCtx.rotate(Math.atan2(mouse.vy, mouse.vx));
-  colonyCtx.fillStyle = `hsl(${hue} 70% 78%)`;
-  polygon(0, 0, size, 7, 0);
+  colonyCtx.rotate(Math.sin(mouse.id + uiState.sim.day / 12) * 0.7);
+  colonyCtx.globalAlpha = mouse.stage === "juvenile" ? 0.72 : 1;
+  colonyCtx.fillStyle = `hsl(${hue} 70% ${mouse.state === "sociallyDetached" ? 74 : 78}%)`;
+  polygon(colonyCtx, 0, 0, size, 7, 0);
   colonyCtx.fill();
   colonyCtx.fillStyle = `hsl(${hue} 68% 66%)`;
-  polygon(-size * 0.35, -size * 0.72, size * 0.32, 5, 0);
-  polygon(-size * 0.35, size * 0.72, size * 0.32, 5, 0);
+  polygon(colonyCtx, -size * 0.34, -size * 0.72, size * 0.32, 5, 0);
+  polygon(colonyCtx, -size * 0.34, size * 0.72, size * 0.32, 5, 0);
   colonyCtx.fill();
   colonyCtx.fillStyle = "#111827";
   colonyCtx.beginPath();
-  colonyCtx.arc(size * 0.42, -size * 0.24, 1.5, 0, Math.PI * 2);
-  colonyCtx.arc(size * 0.42, size * 0.24, 1.5, 0, Math.PI * 2);
+  colonyCtx.arc(size * 0.42, -size * 0.24, 1.4, 0, Math.PI * 2);
+  colonyCtx.arc(size * 0.42, size * 0.24, 1.4, 0, Math.PI * 2);
   colonyCtx.fill();
-  colonyCtx.strokeStyle = `hsl(${hue} 60% 74%)`;
-  colonyCtx.lineWidth = 2;
+  colonyCtx.strokeStyle = mouse.hasStableTerritory ? "rgba(69,215,182,0.9)" : `hsl(${hue} 60% 74%)`;
+  colonyCtx.lineWidth = mouse.hasStableTerritory ? 3 : 2;
   colonyCtx.beginPath();
   colonyCtx.moveTo(-size * 0.95, 0);
   colonyCtx.quadraticCurveTo(-size * 1.6, -size * 0.55, -size * 2.2, 0);
   colonyCtx.stroke();
+  if (mouse.socialStress > 0.72 || mouse.trauma > 0.65) {
+    colonyCtx.strokeStyle = "rgba(251,113,133,0.78)";
+    colonyCtx.lineWidth = 1.4;
+    colonyCtx.strokeRect(-size * 0.85, -size * 0.85, size * 1.7, size * 1.7);
+  }
   colonyCtx.restore();
 }
 
-function polygon(x, y, radius, sides, rotation) {
-  colonyCtx.beginPath();
+function polygon(ctx, x, y, radius, sides, rotation) {
+  ctx.beginPath();
   for (let i = 0; i < sides; i += 1) {
     const angle = rotation + (Math.PI * 2 * i) / sides;
     const px = x + Math.cos(angle) * radius;
     const py = y + Math.sin(angle) * radius;
-    if (i === 0) colonyCtx.moveTo(px, py); else colonyCtx.lineTo(px, py);
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
   }
-  colonyCtx.closePath();
+  ctx.closePath();
 }
 
 function drawChart() {
   const { width, height } = chartCanvas;
-  const pad = 42;
-  const history = state.history;
+  const pad = 46;
+  const history = uiState.sim.history;
   chartCtx.clearRect(0, 0, width, height);
   chartCtx.fillStyle = "#07101f";
   chartCtx.fillRect(0, 0, width, height);
   if (history.length < 2) return;
-  const maxPopulation = Math.max(state.params.initialPopulation, ...history.map((d) => d.population), 10);
+  const maxPopulation = Math.max(uiState.params.initialPopulation, ...history.map((d) => d.population), 10);
+  const maxDaily = Math.max(...history.map((d) => Math.max(d.births, d.deaths)), 4);
   const minDay = history[0].day;
   const maxDay = history.at(-1).day || 1;
-  const xOf = (day) => pad + ((day - minDay) / Math.max(1, maxDay - minDay)) * (width - pad * 1.5);
-  const yOf = (population) => height - pad - (population / maxPopulation) * (height - pad * 1.7);
+  const xOf = (day) => pad + ((day - minDay) / Math.max(1, maxDay - minDay)) * (width - pad * 1.35);
+  const yPopulation = (population) => height - pad - (population / maxPopulation) * (height - pad * 1.8);
+  const yRate = (value) => height - pad - value * (height - pad * 1.8);
+  const yDaily = (value) => height - pad - (value / maxDaily) * (height - pad * 1.8);
   drawGrid(pad, width, height, maxPopulation);
-  const baselineY = yOf(state.params.initialPopulation);
-  chartCtx.strokeStyle = "rgba(255,255,255,0.35)";
-  chartCtx.setLineDash([8, 8]);
-  chartCtx.beginPath();
-  chartCtx.moveTo(pad, baselineY);
-  chartCtx.lineTo(width - pad / 2, baselineY);
-  chartCtx.stroke();
-  chartCtx.setLineDash([]);
+  const baselineY = yPopulation(uiState.params.initialPopulation);
+  drawDashedLine(pad, width - pad / 2, baselineY, "rgba(255,255,255,0.35)");
+  drawSegmentedPopulation(history, xOf, yPopulation);
+  drawSeries(history, "births", xOf, yDaily, "#7dd3fc", 2);
+  drawSeries(history, "deaths", xOf, yDaily, "#f97316", 2);
+  drawSeries(history, "averageSocialization", xOf, yRate, "#a78bfa", 2);
+  drawSeries(history, "averageParentingAbility", xOf, yRate, "#facc15", 2);
+  drawSeries(history, "sociallyDetachedRatio", xOf, yRate, "#94a3b8", 2);
+  drawSeries(history, "socialHealthIndex", xOf, yRate, "#22c55e", 3);
+}
+
+function drawSegmentedPopulation(history, xOf, yOf) {
   for (let i = 1; i < history.length; i += 1) {
     const prev = history[i - 1];
     const curr = history[i];
-    chartCtx.strokeStyle = curr.population >= state.params.initialPopulation ? "#45d7b6" : "#fb7185";
+    chartCtx.strokeStyle = curr.population >= uiState.params.initialPopulation ? "#45d7b6" : "#fb7185";
     chartCtx.lineWidth = 4;
     chartCtx.beginPath();
     chartCtx.moveTo(xOf(prev.day), yOf(prev.population));
@@ -225,12 +203,25 @@ function drawChart() {
   }
 }
 
+function drawSeries(history, key, xOf, yOf, color, width) {
+  chartCtx.strokeStyle = color;
+  chartCtx.lineWidth = width;
+  chartCtx.beginPath();
+  history.forEach((point, index) => {
+    const x = xOf(point.day);
+    const y = yOf(point[key] ?? 0);
+    if (index === 0) chartCtx.moveTo(x, y);
+    else chartCtx.lineTo(x, y);
+  });
+  chartCtx.stroke();
+}
+
 function drawGrid(pad, width, height, maxPopulation) {
   chartCtx.strokeStyle = "rgba(255,255,255,0.08)";
   chartCtx.fillStyle = "rgba(248,250,252,0.62)";
-  chartCtx.font = "16px sans-serif";
+  chartCtx.font = "15px sans-serif";
   for (let i = 0; i <= 4; i += 1) {
-    const y = pad + ((height - pad * 1.7) * i) / 4;
+    const y = pad + ((height - pad * 1.8) * i) / 4;
     chartCtx.beginPath();
     chartCtx.moveTo(pad, y);
     chartCtx.lineTo(width - pad / 2, y);
@@ -239,29 +230,44 @@ function drawGrid(pad, width, height, maxPopulation) {
   }
 }
 
+function drawDashedLine(x1, x2, y, color) {
+  chartCtx.strokeStyle = color;
+  chartCtx.setLineDash([8, 8]);
+  chartCtx.beginPath();
+  chartCtx.moveTo(x1, y);
+  chartCtx.lineTo(x2, y);
+  chartCtx.stroke();
+  chartCtx.setLineDash([]);
+}
+
 function loop(now) {
-  const elapsed = (now - state.lastTick) / 1000;
-  state.lastTick = now;
-  if (state.running) {
-    state.accumulator += elapsed;
-    while (state.accumulator >= state.params.daySeconds) {
-      simulateDay();
-      state.accumulator -= state.params.daySeconds;
+  const elapsed = (now - uiState.lastTick) / 1000;
+  uiState.lastTick = now;
+  if (uiState.running) {
+    uiState.accumulator += elapsed;
+    while (uiState.accumulator >= uiState.params.daySeconds) {
+      stepSimulation(uiState.sim, 1);
+      uiState.accumulator -= uiState.params.daySeconds;
+      updateReadouts();
     }
   }
   draw();
   requestAnimationFrame(loop);
 }
 
+function pct(value) {
+  return `${Math.round((value ?? 0) * 100)}%`;
+}
+
 toggleButton.addEventListener("click", () => {
-  state.running = !state.running;
-  toggleButton.textContent = state.running ? "一時停止" : "開始";
-  state.lastTick = performance.now();
+  uiState.running = !uiState.running;
+  toggleButton.textContent = uiState.running ? "一時停止" : "開始";
+  uiState.lastTick = performance.now();
 });
 document.querySelector("#resetSimulation").addEventListener("click", resetSimulation);
 document.querySelector("#shareResult").addEventListener("click", () => {
-  const peak = Math.max(...state.history.map((d) => d.population));
-  const text = `Universe25シミュレーター結果: ${state.day}日経過、現在${state.population}匹、最大${peak}匹。初期${state.params.initialPopulation}匹から実験しました。`;
+  const peak = Math.max(...uiState.sim.history.map((d) => d.population));
+  const text = `Universe25シミュレーター結果: ${uiState.sim.day}日経過、現在${uiState.sim.stats.population}匹、最大${peak}匹。状態: ${uiState.sim.status}。社会健全性${pct(uiState.sim.stats.socialHealthIndex)}。`;
   const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(location.href)}`;
   window.open(url, "_blank", "noopener,noreferrer");
 });
