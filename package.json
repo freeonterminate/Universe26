@@ -1,0 +1,14 @@
+{
+  "name": "universe25-simulator",
+  "version": "1.0.0",
+  "description": "A browser-based Universe 25 inspired mouse colony simulator.",
+  "type": "module",
+  "scripts": {
+    "start": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0"
+  },
+  "devDependencies": {
+    "vite": "latest"
+  }
+}
