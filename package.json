@@ -6,7 +6,8 @@
   "scripts": {
     "start": "vite --host 0.0.0.0",
     "build": "vite build",
-    "preview": "vite preview --host 0.0.0.0"
+    "preview": "vite preview --host 0.0.0.0",
+    "test": "node scripts/simulation-check.mjs"
   },
   "devDependencies": {
     "vite": "latest"

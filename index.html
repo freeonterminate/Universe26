@@ -43,10 +43,21 @@
               <div><span>現在数</span><strong id="populationNow">0</strong></div>
               <div><span>出生</span><strong id="birthsNow">0</strong></div>
               <div><span>死亡</span><strong id="deathsNow">0</strong></div>
+              <div><span>状態</span><strong id="statusNow">初期化</strong></div>
             </div>
           </div>
           <canvas id="colonyCanvas" width="920" height="520" aria-label="ポリゴンねずみのコロニー表示"></canvas>
         </section>
+      </section>
+
+      <section class="panel debug-panel">
+        <div class="panel-header">
+          <div>
+            <h2>社会崩壊デバッグ</h2>
+            <p>個体能力・育児・局所過密・離脱状態を追跡します。</p>
+          </div>
+        </div>
+        <div id="debugGrid" class="debug-grid"></div>
       </section>
 
       <section class="panel chart-panel">
@@ -56,8 +67,14 @@
             <p>初期投入数以上は青緑、下回ると赤色で表示します。</p>
           </div>
           <div class="legend">
-            <span><i class="above"></i>初期値以上</span>
-            <span><i class="below"></i>初期値未満</span>
+            <span><i class="above"></i>総個体数: 初期値以上</span>
+            <span><i class="below"></i>総個体数: 初期値未満</span>
+            <span><i class="births"></i>出生数</span>
+            <span><i class="deaths"></i>死亡数</span>
+            <span><i class="social"></i>平均社会化</span>
+            <span><i class="parenting"></i>平均育児</span>
+            <span><i class="detached"></i>離脱率</span>
+            <span><i class="health"></i>社会健全性</span>
           </div>
         </div>
         <canvas id="populationChart" width="1280" height="340" aria-label="ねずみ数の折れ線グラフ"></canvas>
