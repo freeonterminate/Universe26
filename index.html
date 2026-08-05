@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Universe 25 Simulator</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Universe 25 inspired colony lab</p>
+          <h1>ユニバース25 シミュレーター</h1>
+          <p class="lead">
+            初期投入数、餌、巣、密度ストレス、時間速度を調整しながら、かわいいポリゴンねずみたちのコロニー変化を観察できます。
+          </p>
+        </div>
+        <div class="hero-actions">
+          <button id="toggleSimulation" class="primary-button">開始</button>
+          <button id="resetSimulation" class="secondary-button">リセット</button>
+          <button id="shareResult" class="share-button">X で結果をシェア</button>
+        </div>
+      </section>
+
+      <section class="dashboard">
+        <aside class="panel controls-panel" aria-label="シミュレーション設定">
+          <h2>実験パラメータ</h2>
+          <div id="controls" class="controls"></div>
+          <div class="time-readout">
+            <span>経過日数</span>
+            <strong id="dayCounter">0 日</strong>
+          </div>
+        </aside>
+
+        <section class="panel colony-panel">
+          <div class="panel-header">
+            <div>
+              <h2>コロニー観察エリア</h2>
+              <p>餌場・巣・ねずみの状態をポリゴン表現で表示します。</p>
+            </div>
+            <div class="stat-grid">
+              <div><span>現在数</span><strong id="populationNow">0</strong></div>
+              <div><span>出生</span><strong id="birthsNow">0</strong></div>
+              <div><span>死亡</span><strong id="deathsNow">0</strong></div>
+            </div>
+          </div>
+          <canvas id="colonyCanvas" width="920" height="520" aria-label="ポリゴンねずみのコロニー表示"></canvas>
+        </section>
+      </section>
+
+      <section class="panel chart-panel">
+        <div class="panel-header">
+          <div>
+            <h2>ねずみ数の推移</h2>
+            <p>初期投入数以上は青緑、下回ると赤色で表示します。</p>
+          </div>
+          <div class="legend">
+            <span><i class="above"></i>初期値以上</span>
+            <span><i class="below"></i>初期値未満</span>
+          </div>
+        </div>
+        <canvas id="populationChart" width="1280" height="340" aria-label="ねずみ数の折れ線グラフ"></canvas>
+      </section>
+    </main>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
